@@ -174,6 +174,11 @@ class CondaEnvironmentManager(AbstractEnvironmentManager):
             # only true in default anaconda install, may need to fix
             self.conda_env_root = os.path.join(self.conda_root, 'envs')
 
+            # JK TODO: Why is this here? Doesn't this overwrite config.conda_env_root? This makes
+            #          the conda_env_root depend on the conda_root, when that isn't always the case?
+            #          For now, I'm setting the self.conda_env_root back to config.conda_env_root
+            self.conda_env_root = config.conda_env_root
+
     def create_environment(self, env_name):
         # check to see if conda env exists, and if not, try to create it
         conda_prefix = os.path.join(self.conda_env_root, env_name)
@@ -541,7 +546,16 @@ class SubprocessRuntimeManager(AbstractRuntimeManager):
             + self.env_mgr.deactivate_env_commands(p.env)
         p.pod.log.info('\t'+p.run_msg())
         # '&&' so we abort if any command in the sequence fails.
+
+        # JK TODO: debugging only. remove this eventually
+        # Replace '/usr/bin/env python'
+        # With: '/usr/bin/env python -m debugpy --listen 5678 --wait-for-client'
+        updated_cmds = [cmd.replace('/usr/bin/env python', '/usr/bin/env python -m debugpy --listen 5678 --wait-for-client', 1) for cmd in commands]
+        print(updated_cmds)
+        commands = updated_cmds
+
         commands = ' && '.join([s for s in commands if s])
+        print(commands)
 
         assert os.path.isdir(p.pod.paths.POD_WORK_DIR)
         env_vars = env_vars_base.copy()
@@ -549,13 +563,32 @@ class SubprocessRuntimeManager(AbstractRuntimeManager):
         env_vars.update(p.pod.pod_env_vars)
         # Need to run bash explicitly because 'conda activate' sources
         # env vars (can't do that in posix sh). tcsh could also work.
-        return subprocess.Popen(
+
+        proc = subprocess.Popen(
             commands,
+            stdout=subprocess.PIPE, #JK TODO: remove!
+            stderr=subprocess.PIPE, #JK TODO: remove!
+            text=True, #JK TODO: remove!
             shell=True, executable=self.bash_exec,
             env=env_vars, cwd=p.pod.paths.POD_WORK_DIR,
-            stdout=p.pod.log_file, stderr=p.pod.log_file,
+            #stdout=p.pod.log_file, stderr=p.pod.log_file, #JK TODO: uncomment!
             universal_newlines=True, bufsize=1
         )
+
+        # 2. Print the exact command string being executed for verification
+        print("\n--- EXECUTING COMMAND ---")
+        print(commands)
+        print("-------------------------\n")
+
+        # 3. Force the parent script to wait and read the output streams
+        stdout_data, stderr_data = proc.communicate()
+
+        print("--- SUBPROCESS STDOUT ---")
+        print(stdout_data)
+        print("--- SUBPROCESS STDERR ---")
+        print(stderr_data)
+
+        return proc
 
     def run(self, cases: dict, _log):
         # Call cleanup method if we're killed
