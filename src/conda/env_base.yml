@@ -30,3 +30,7 @@ dependencies:
 - click=8.1.7
 - ghostscript=10.02.1
 - pybind11=2.12.0
+# 2026-07-23: downgrading setuptools to temporarily avoid errors regarding pkg_resources. For example:
+#   File "/work/Janice.Kim/.conda/envs/_MDTF_base/lib/python3.12/site-packages/intake_esm/__init__.py", line 6, in <module>
+#   from pkg_resources import DistributionNotFound, get_distribution
+- setuptools<82
