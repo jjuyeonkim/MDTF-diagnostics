@@ -1,4 +1,4 @@
-name: _MDTF_base
+name: _MDTF_base_v3
 # environment used by the framework itself
 channels:
 - conda-forge
