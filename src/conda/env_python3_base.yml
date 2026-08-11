@@ -1,4 +1,4 @@
-name: _MDTF_python3_base_v3
+name: _MDTF_python3_base
 channels:
 - conda-forge # NOTE: critical to give highest priority to conda-forge
 - defaults
