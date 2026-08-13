@@ -2,7 +2,6 @@ name: _MDTF_base
 # environment used by the framework itself
 channels:
 - conda-forge
-- defaults
 dependencies:
 # specify up to minor version number to provide a consistent environment for POD developers
 # versions are current as of Jul 2020
@@ -28,3 +27,4 @@ dependencies:
 - intake-esm=2021.8.17
 - subprocess32=3.5.4
 - pyyaml=6.0
+- setuptools<81
