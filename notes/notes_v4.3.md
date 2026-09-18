@@ -275,3 +275,85 @@ flowchart TD
     Z --> AA["Clean temporary/preprocessed files"]
     AA --> AB["Print summary, close logs, return status"]
 ```
+
+---
+
+## Detailed translator and preprocessor flow
+
+```mermaid
+flowchart TD
+    A["mdtf_framework.main()"] --> B["Parse and verify runtime config"]
+    B --> C["Set CODE_ROOT, WORK_DIR, OUTPUT_DIR\nresolve DATA_CATALOG"]
+
+    subgraph TRANSLATOR["Build VariableTranslator"]
+        C --> D["VariableTranslator(CODE_ROOT)\nSingleton instance"]
+        D --> E["Read modifiers.jsonc"]
+        E --> F["read_conventions(CODE_ROOT)"]
+        F --> G["Glob data/fieldlist_*.jsonc"]
+        G --> H{{"For each fieldlist"}}
+        H --> I["read_json(fieldlist)"]
+        I --> J["add_convention()"]
+        J --> K["Fieldlist.from_struct()"]
+        K --> L["Build axes_lut, variable lut,\nstandard-name lists, aliases"]
+        L --> H
+    end
+
+    subgraph PREP_INIT["Build preprocessor"]
+        C --> M{"config.run_pp?"}
+        M -- false --> N["NullPreprocessor"]
+        N --> N1["No request edits\nNo dataset transforms\nUse input catalog paths"]
+        M -- true --> O["DaskMultiFilePreprocessor"]
+        O --> P["Initialize parser and\npreprocessing function objects"]
+        P --> Q["Register file preprocessing functions\nplus optional user scripts"]
+    end
+
+    subgraph CASE_SETUP["Case and POD setup"]
+        L --> R["Create one data source per case"]
+        R --> S["PodObject(example_multicase).setup_pod()"]
+        S --> T["Read example_multicase/settings.jsonc\nload convention, varlist, dimensions"]
+        T --> U{{"For each case and POD variable"}}
+        U --> V["Read case varlist entry"]
+        V --> W{"translate_data enabled\nand conventions differ?"}
+        W -- yes --> X["VariableTranslator.translate()\nPOD convention -> data convention"]
+        W -- no --> Y["Use no_translation\nor retain convention"]
+        X --> Z["Attach translated name, standard_name,\nunits, dimensions, coordinates"]
+        Y --> Z
+        Z --> U
+        U --> AA["Mark case/POD active\nwhen required variables are available"]
+    end
+
+    subgraph PP_RUN["Preprocessor execution"]
+        AA --> AB["data_pp.process(cases, config, MODEL_WORK_DIR)"]
+        AB --> AC{{"Which implementation?"}}
+        AC -- NullPreprocessor --> AD["query_catalog()\nreturn source datasets\nset dest_path to source"]
+        AC -- DaskMultiFilePreprocessor --> AE["edit_request() for each variable"]
+        AE --> AF["Add alternate requests when a\npreprocessor can transform input"]
+        AF --> AG["query_catalog(cases, DATA_CATALOG)\nselect assets for all cases"]
+        AG --> AH{{"For each case and variable"}}
+        AH --> AI["parse_ds()\nDefaultDatasetParser normalizes metadata"]
+        AI --> AJ["execute_pp_functions()"]
+        AJ --> AK["Run ordered transforms\nunit, coordinate, precipitation, etc."]
+        AK --> AL["Run optional user_pp_scripts"]
+        AL --> AM["Store transformed xarray dataset"]
+        AM --> AH
+        AH --> AN["Return catalog subset"]
+        AD --> AN
+    end
+
+    subgraph PP_OUTPUT["Write preprocessed data and catalog"]
+        AN --> AO["write_ds(cases, catalog_subset, pod_runtime_reqs)"]
+        AO --> AP{{"For each case and variable"}}
+        AP --> AQ["clean_output_attrs()\nremove conflicting attrs/encoding"]
+        AQ --> AR["log_history_attr()"]
+        AR --> AS["write_dataset()\nwrite variable to var.dest_path\nusing xarray/Dask NetCDF"]
+        AS --> AP
+        AP --> AT["rename_dataset_vars()\ntranslated data names -> POD names"]
+        AT --> AU["write_pp_catalog()"]
+        AU --> AV["Build catalog rows from case metadata\nand written variable paths"]
+        AV --> AW["Validate and serialize\nMDTF_postprocessed_data.csv/json"]
+    end
+
+    AW --> AX["Runtime manager consumes the\npostprocessed catalog for the POD"]
+    N1 --> AY["Framework keeps original DATA_CATALOG"]
+    AY --> AX
+```
