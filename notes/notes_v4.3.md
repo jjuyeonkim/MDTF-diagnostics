@@ -236,3 +236,42 @@ RuntimeState --> DMGenericCoordinate
 DMVerticalCoordinate <|-- DMParametricVerticalCoordinate
 DMGenericTimeCoordinate <|-- DMTimeCoordinate
 ```
+
+## MDTF framework flow: `example_multicase`
+
+```mermaid
+flowchart TD
+    A["mdtf_framework.py\n-f runtime config"] --> B["Parse and verify runtime config"]
+    B --> C["Create model paths\nWORK_DIR and OUTPUT_DIR"]
+    C --> D["Build VariableTranslator and preprocessor"]
+    D --> E["Create CMIP data sources\none per configured case"]
+    E --> F["Create PodObject: example_multicase"]
+    F --> G["Read diagnostics/example_multicase/settings.jsonc\nload vars, dimensions, runtime requirements"]
+    G --> H["Read varlists and translate POD variables\nfor every case"]
+    H --> I["Preprocessor selects and writes data\nMDTF_postprocessed_data.json"]
+    I --> J{"Any POD or data-request failure?"}
+    J -- Yes --> K["Skip POD execution"]
+    J -- No --> L["SubprocessRuntimeManager.setup()\nselect/create POD environment"]
+    L --> M["pre_run_setup()\nset env vars and driver path"]
+    M --> N["Write POD work/case_info.yml\nCATALOG_FILE + CASE_LIST metadata"]
+    N --> O["Launch Python driver\nexample_multicase.py"]
+
+    subgraph POD["example_multicase.py in POD subprocess"]
+        O --> P["Read case_env_file from environment"]
+        P --> Q["Open intake ESM catalog\nsearch variable_id=tas, frequency=day"]
+        Q --> R["Convert matching assets\nto xarray dataset dictionary"]
+        R --> S{{"For each case"}}
+        S --> T["Load tas and take time mean"]
+        T --> U["Compute global-mean anomaly"]
+        U --> V["Take zonal mean and store result"]
+        V --> S
+        S --> W["Plot one line per case\nadd legend and title"]
+        W --> X["Save model/PS/\nexample_multicase_plot.eps"]
+        X --> Y["Close catalog and exit 0"]
+    end
+
+    Y --> Z["Convert figures and template POD HTML"]
+    K --> Z
+    Z --> AA["Clean temporary/preprocessed files"]
+    AA --> AB["Print summary, close logs, return status"]
+```
