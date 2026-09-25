@@ -638,7 +638,7 @@
       "ndim": 3
     },
     "zg": {
-      "standard_name": "geopotential_heihgt",
+      "standard_name": "geopotential_height",
       "long_name": "Geopotential Height",
       "realm": "atmos",
       "units": "m",
