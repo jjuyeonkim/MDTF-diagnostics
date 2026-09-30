@@ -1,7 +1,7 @@
 CATALOG_FILE: "/home/a1r/github/MDTF-diagnostics/diagnostics/example_multicase/c384L65_am5f3b1r0_amip.json"
 CASE_LIST:
   c384L65_am5f3b1r0_amip:
-    case_name: c384L65_am5f3b1r0_amip:
+    case_name: c384L65_am5f3b1r0_amip
     startdate: '19810101'
     enddate: '19821231'
     TAS_ASSOC_FILES: ''
