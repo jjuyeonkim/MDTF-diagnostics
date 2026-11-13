@@ -177,6 +177,7 @@ class MDTFCFAccessorMixin(object):
         # if the number of coordinates is greater than the number of dimensions,
         # assume that we have a curvilinear grid that is defined by 2-dimensional
         # lat & lon coords
+        subset_dims = []
         if len(coords_list) > len(dims_list):
             # subtract the coordinate list from the dimensions list
             subset_dims = list(set(dims_list) - set(coords_list))
@@ -194,7 +195,12 @@ class MDTFCFAccessorMixin(object):
             if len(v) > 1 and var_name is not None:
                 ax = [c for c in v if c in itertools.chain.from_iterable(axes_obj.cf.coordinates.values())]
                 del_ax = [d for d in v if d not in itertools.chain.from_iterable(axes_obj.cf.coordinates.values())]
-                if del_ax is not None:  # remove the entries that are not in the cf.coordinates.values dict
+                if not ax:
+                    _log.warning("cf_xarray fix: no coordinate found for %s axis of %s; dropping.",
+                                 k, var_name)
+                    delete_keys.append(k)
+                    continue
+                if del_ax:
                     # append entries that are in the cf.coordinates.values dict if they are missing in coords_list
                     # and dims_list
                     if del_ax[0] in coords_list:
@@ -206,16 +212,15 @@ class MDTFCFAccessorMixin(object):
                     if ax[0] not in dims_list:
                         dims_list.append(ax[0])
 
-                if ax is not None:
-                    vardict[k] = ax
-                    if ax[0] not in coords_list:
-                        _log.warning(("cf_xarray fix: %s axis %s not in dimensions "
-                                      "for %s; dropping."), k, ax[0], var_name)
-                        delete_keys.append(k)
-                    else:
-                        coords_list.remove(ax[0])
-                        if ax[0] in dims_list:
-                            dims_list.remove(ax[0])
+                vardict[k] = ax
+                if ax[0] not in coords_list:
+                    _log.warning(("cf_xarray fix: %s axis %s not in dimensions "
+                                  "for %s; dropping."), k, ax[0], var_name)
+                    delete_keys.append(k)
+                else:
+                    coords_list.remove(ax[0])
+                    if ax[0] in dims_list:
+                        dims_list.remove(ax[0])
             elif len(v) == 1:
                 if v[0] not in coords_list:
                     _log.warning(("cf_xarray fix: %s axis %s not in dimensions "
@@ -1078,12 +1083,18 @@ class DefaultDatasetParser:
                 of the dataset variable, according to the data request.
             ds: xarray Dataset.
         """
-        for coord in ds.cf.axes_values(our_var.name).values():
-            # .axes_values() will have thrown TypeError if XYZT axes not all uniquely defined
-            assert isinstance(coord, list), \
-                "Assertion failed: " + coord + " is not a list"
-            assert isinstance(coord[0], xr.DataArray), \
-                "Assertion failed: " + coord[0] + " is not an instance of xarray.DataArray"
+        for axis, coords in ds.cf.axes_values(our_var.name).items():
+            if not coords:
+                raise ValueError(
+                    f"No coordinates found for {axis} axis of '{our_var.name}'."
+                )
+            if not all(
+                isinstance(coord, (xr.DataArray, PlaceholderScalarCoordinate))
+                for coord in coords
+            ):
+                raise TypeError(
+                    f"Unexpected coordinate type for {axis} axis of '{our_var.name}'."
+                )
 
         # check set of dimension coordinates (array dimensionality) agrees
         our_axes_set = our_var.dim_axes_set
