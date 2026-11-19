@@ -1362,6 +1362,10 @@ class MDTFPreprocessorBase(metaclass=util.MDTFABCMeta):
                 case_d.query['variable_id'] = trans_name
                 print("DEBUG ", case_d.query)
                 cat_subset = cat.search(**case_d.query)
+                print("---- JK DEBUG: check which rows were selected (initial search results) START")
+                columns = [c for c in ("variable_id", "path", "file", "start_time", "end_time") if c in cat_subset.df.columns]
+                print(cat_subset.df[columns].to_string(index=False))
+                print("---- JK DEBUG: check which rows were selected (initial search results) END")
 
                 if cat_subset.df.empty:
                     #if any(var.alternates):
@@ -1385,6 +1389,10 @@ class MDTFPreprocessorBase(metaclass=util.MDTFABCMeta):
                     if try_new_query:
                         case_d.query['variable_id'] = primary_raw_name #trans_name
                         cat_subset = cat.search(**case_d.query)
+                        print("---- JK DEBUG: check which rows were selected (try_new_query) START")
+                        columns = [c for c in ("variable_id", "path", "file", "start_time", "end_time") if c in cat_subset.df.columns]
+                        print(cat_subset.df[columns].to_string(index=False))
+                        print("---- JK DEBUG: check which rows were selected (try_new_query) END")
                         print("DEBUG: Retrying query with updated parameters")
                         print("DEBUG try_new_query: ", case_d.query)
                         if cat_subset.df.empty:
@@ -1395,6 +1403,7 @@ class MDTFPreprocessorBase(metaclass=util.MDTFABCMeta):
                         raise util.DataRequestError(
                             f"Unable to find match or alternate for {trans_name}"
                             f" for case {case_name} in {data_catalog}")
+
                 # ------------------------------------------------------------------
                 # 4. LOAD & PARSE DATASET
                 # ------------------------------------------------------------------
@@ -1425,8 +1434,21 @@ class MDTFPreprocessorBase(metaclass=util.MDTFABCMeta):
                 var_xr = None
                 for k in list(time_sort_dict):
                     if var_xr is None:
+                        print(f"---- JK DEBUG xr.concat() not called for {k}")
                         var_xr = cat_subset_df[k]
                     else:
+                        print(f"---- JK DEBUG Before xr.concat for {k} Start")
+                        for key, part in cat_subset_df.items():
+                            print(key, dict(part.sizes))
+                            for name in part.data_vars:
+                                print(" ", name, part[name].dims)
+                        # JK TODO: Here, can I do a check to make sure I'm only concatenating
+                        # if the dimensions match what is expected?
+                        # Example case: 
+                        # Actual -- u200 dims: ('time', 'plev19', 'lat', 'lon', 'plev8', 'lev')
+                        # Expected -- u200 dims: ('time', 'plev19', 'lat', 'lon')
+                        # 
+                        print(f"---- JK DEBUG Before xr.concat for {k} End")
                         var_xr = xr.concat([var_xr, cat_subset_df[k]], "time")
 
                 for att in drop_atts:
@@ -2175,9 +2197,31 @@ class MDTFPreprocessorBase(metaclass=util.MDTFABCMeta):
         <https://xarray.pydata.org/en/stable/generated/xarray.Dataset.to_netcdf.html>`__.
         May be overwritten by child classes.
         """
+        print("---- Start JK DEBUG - inside write_dataset")
+        print(
+            f"DEBUG write_dataset: POD name={var.name!r}, "
+            f"translated name={var.translation.name!r}, "
+            f"data_vars={list(ds.data_vars)}"
+        )
+        print("---- End JK DEBUG - inside write_dataset")
+
         os.makedirs(os.path.dirname(var.dest_path), exist_ok=True)
-        var_ds = ds[var.translation.name].to_dataset()
-        var_ds = var_ds.rename_vars(name_dict={var.translation.name: var.name})
+
+        # Double-check if the variable name or its translation exists in the dataset
+        # and choose the appropriate source name for writing
+        if var.name in ds.data_vars:
+            source_name = var.name
+        elif var.translation.name in ds.data_vars:
+            source_name = var.translation.name
+        else:
+            raise KeyError(
+                f"Neither {var.name!r} nor {var.translation.name!r} is in "
+                f"the dataset; available variables: {list(ds.data_vars)}"
+            )
+        var_ds = ds[source_name].to_dataset()
+        if source_name != var.name:
+            var_ds = var_ds.rename_vars(name_dict={source_name: var.name})
+
         var.log.info("Writing '%s'.", var.dest_path, tags=util.ObjectLogTag.OUT_FILE)
         if var.is_static:
             unlimited_dims = []
@@ -2319,6 +2363,21 @@ class MDTFPreprocessorBase(metaclass=util.MDTFABCMeta):
 
         # 4. Proceed to xarray metadata parsing
         try:
+            print("---- Start JK DEBUG")
+            print (f"v_name:{v_name}, target_name:{target_name}")
+            a = ds[target_name]
+            print(f"{target_name} dims:", a.dims)
+            print(f"{target_name} coords:", {
+                name: (a.coords[name].dims, a.coords[name].attrs)
+                for name in a.coords
+            })
+            print("sizes:", dict(ds.sizes))
+            for name in ds.data_vars:
+                if {"lev", "plev8", "plev19"} & set(ds[name].dims):
+                    print("found intersection of dims with lev, plev8, plev19")
+                    print(name, ds[name].dims, ds[name].shape)
+            print("---- End JK DEBUG")
+
             ds = self.parser.parse(var, ds)
             #print(ds)
         except Exception as exc:
